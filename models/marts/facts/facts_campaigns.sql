@@ -1,6 +1,6 @@
 -- 📁 models/marts/facts/facts_campagnes.sql
 SELECT DISTINCT
-  ca.id_campagne,
+  ca.id_campagne as id_campaign,
   CAST(ca.evenement_oui_non AS STRING) AS evenement,
   ca.evenement_type AS evenement_type,
   ca.budget,

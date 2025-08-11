@@ -1,74 +1,65 @@
--- =======================================================================================
--- Analyse de corrélation : pics de mentions sur les réseaux sociaux vs performances ventes
--- =======================================================================================
--- Objectif :
--- 1. Identifier les jours où les mentions explosent sur les réseaux sociaux (pics),
--- 2. Comparer le volume de ventes entre ces jours et les jours "normaux",
--- 3. Évaluer s’il existe une corrélation potentielle entre mentions et ventes.
--- =======================================================================================
+-- ============================================================================================
+-- Analyse de l’impact des pics de mentions sur les réseaux sociaux sur les performances ventes
+-- Agrégation par année et mois
+-- ============================================================================================
 
--- Étape 1 : Calcul des volumes de mentions par jour
 WITH mentions_stats AS (
   SELECT
-    d.date AS date_post,               -- Date du post (via dim_date)
-    COUNT(*) AS total_mentions         -- Nombre total de mentions ce jour-là
+    d1.date AS date_jour,                  
+    SUM(f.volume_mentions) AS total_mentions 
   FROM {{ ref('facts_posts') }} f
-  JOIN {{ ref('dim_date') }} d ON d.id_date = f.id_date
-  GROUP BY d.date
+  JOIN {{ ref('dim_date') }} d1 ON d1.id_date = f.id_date
+  GROUP BY d1.date
 ),
 
--- Étape 2 : Calcul des statistiques globales (moyenne et écart-type)
 stats_calc AS (
   SELECT
-    AVG(total_mentions) AS moyenne_mentions,          -- Moyenne journalière des mentions
-    STDDEV(total_mentions) AS ecart_type_mentions      -- Écart-type des mentions par jour
+    AVG(total_mentions) AS moyenne_mentions,           
+    STDDEV(total_mentions) AS ecart_type_mentions      
   FROM mentions_stats
 ),
 
--- Étape 3 : Identification des jours avec pic de mentions (au-delà de 2 écarts-types)
 mentions_avec_pic AS (
   SELECT
-    m.date_post,
+    d1.date,
     m.total_mentions,
     CASE
       WHEN m.total_mentions > s.moyenne_mentions + 2 * s.ecart_type_mentions THEN 1
       ELSE 0
-    END AS pic_mention                                 -- 1 = jour pic, 0 = jour normal
+    END AS pic_mention                                
   FROM mentions_stats m
+  JOIN {{ ref('dim_date') }} d1 ON d1.date = m.date_jour
   CROSS JOIN stats_calc s
 ),
 
--- Étape 4 : Agrégation des ventes par jour
 ventes_par_jour AS (
   SELECT
-    d.date AS date_commande,                          -- Date de la commande (via dim_date)
-    SUM(dc.quantite) AS volume_ventes                  -- Quantité totale vendue ce jour
+    d.date AS date_jour,                               
+    SUM(dc.quantite) AS volume_ventes                  
   FROM {{ ref('dim_details_commandes') }} dc
-  JOIN {{ ref('facts_commandes') }} c
-    ON dc.id_commande = c.id_commande
-  JOIN {{ ref('dim_date') }} d
-    ON d.id_date = c.id_date_commande
+  JOIN {{ ref('facts_commandes') }} c ON dc.id_commande = c.id_commande
+  JOIN {{ ref('dim_date') }} d ON c.id_date_commande = d.id_date
   GROUP BY d.date
 ),
 
--- Étape 5 : Fusion des données de mentions et de ventes
 data_combinee AS (
   SELECT
-    m.date_post AS date,
+    d1.date,
     m.total_mentions,
     m.pic_mention,
-    COALESCE(v.volume_ventes, 0) AS volume_ventes     -- Ventes ce jour (0 si aucune)
+    COALESCE(v.volume_ventes, 0) AS volume_ventes      
   FROM mentions_avec_pic m
-  LEFT JOIN ventes_par_jour v
-    ON m.date_post = v.date_commande
+  JOIN {{ ref('dim_date') }} d1 ON m.date = d1.date
+  LEFT JOIN ventes_par_jour v ON d1.date = v.date_jour
 )
 
--- Étape 6 : Résumé final – comparaison jours avec pic vs jours normaux
 SELECT
-  pic_mention,                                        -- 1 = jour avec pic, 0 = jour sans pic
-  COUNT(*) AS nb_jours,                               -- Nombre total de jours dans chaque catégorie
-  ROUND(AVG(total_mentions), 2) AS mentions_moyennes, -- Moyenne des mentions
-  ROUND(AVG(volume_ventes), 2) AS ventes_moyennes     -- Moyenne des ventes
+  EXTRACT(YEAR FROM date) AS annee,       -- Année extraite de la date
+  EXTRACT(MONTH FROM date) AS mois,       -- Mois extrait de la date (1 à 12)
+  pic_mention,                            -- 1 = mois avec pic, 0 = mois normal
+  COUNT(*) AS nb_jours_dans_mois,         -- Nombre de jours dans ce mois et catégorie
+  ROUND(AVG(total_mentions), 2) AS mentions_moyennes,
+  ROUND(AVG(volume_ventes), 2) AS ventes_moyennes
 FROM data_combinee
-GROUP BY pic_mention
-ORDER BY pic_mention DESC
+GROUP BY annee, mois, pic_mention
+ORDER BY annee, mois, pic_mention DESC

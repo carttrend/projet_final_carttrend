@@ -1,10 +1,11 @@
 -- ----------------------------------------------------------------------------------------
 -- Étude de corrélation approximative entre pics de mentions et satisfaction client
+-- Agrégation par année et mois
 -- ----------------------------------------------------------------------------------------
 -- Objectif :
 -- 1) Calculer la moyenne et écart-type des mentions quotidiennes
 -- 2) Identifier les jours "pic" où mentions > moyenne + 2 * écart-type
--- 3) Comparer la satisfaction moyenne lors des jours de pic et autres jours
+-- 3) Comparer la satisfaction moyenne lors des jours de pic et autres jours, par mois et année
 -- ----------------------------------------------------------------------------------------
 
 WITH mentions_stats AS (
@@ -57,10 +58,12 @@ data_combinee AS (
 )
 
 SELECT
-  pic_mention,                           -- 0 = jour normal, 1 = jour pic de mentions
+  EXTRACT(YEAR FROM date) AS annee,       -- Extraction de l'année
+  EXTRACT(MONTH FROM date) AS mois,       -- Extraction du mois
+  pic_mention,                            -- 0 = jour normal, 1 = jour pic de mentions
   COUNT(*) AS nb_jours,                  -- Nombre de jours par catégorie
   ROUND(AVG(total_mentions), 2) AS mentions_moyennes,  -- Moyenne mentions par catégorie
   ROUND(AVG(note_moyenne), 2) AS satisfaction_moyenne  -- Moyenne satisfaction client par catégorie
 FROM data_combinee
-GROUP BY pic_mention                     -- Regroupement par indicateur de pic
-ORDER BY pic_mention DESC                -- Affiche en premier les jours avec pic
+GROUP BY annee, mois, pic_mention          -- Regroupement par année, mois et pic
+ORDER BY annee, mois, pic_mention DESC     -- Tri par année, mois puis pic (pic en premier)

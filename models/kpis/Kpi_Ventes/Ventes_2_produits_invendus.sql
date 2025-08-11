@@ -1,6 +1,7 @@
 -- Liste des produits jamais vendus
 -- Permet d’identifier les produits du catalogue qui n’ont jamais été associés à une commande (zéro vente).
 
+--Produits invendus
 SELECT 
   p.produit, 
   0 AS total_vendus, 
